@@ -1,5 +1,6 @@
+import torch
 import torch.nn as nn
-from layers import conv_block
+from .layers import conv_block
 
 class VGG(nn.Module):
     """
@@ -15,9 +16,27 @@ class VGG(nn.Module):
         self.conv_block_5 = conv_block(in_c=512, out_c=512, n_conv=4)
         # Max pooling for encoding
         self.pool = nn.MaxPool2d((2, 2))
-        
+        # Classification Head
+        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        self.classifier = nn.Sequential(
+            nn.Linear(512 * 7 * 7, 4096),
+            nn.ReLU(),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(),
+            nn.Dropout(),
+            nn.Linear(4096, 2), # Only two classes as we're gonna be doing binary classification
+        )
+
+    def classification(self, features):
+        x_avg = self.avgpool(features)
+        x_avg_flat = torch.flatten(x_avg, 1)
+        x = self.classifier(x_avg_flat)
+        return x
 
     def forward(self, inputs):
+
+        # Features extraction
         x1 = self.conv_block_1(inputs)
         p1 = self.pool(x1)
         x2 = self.conv_block_2(p1)
@@ -27,8 +46,9 @@ class VGG(nn.Module):
         x4 = self.conv_block_4(p3)
         p4 = self.pool(x4)
         x5 = self.conv_block_5(p4)
-        p5 = self.pool(x5)
+        features = self.pool(x5)
 
-        #TODO: Add classifcation layer
-        
-        return 
+        # Classification
+        x = self.classification(features)
+
+        return x

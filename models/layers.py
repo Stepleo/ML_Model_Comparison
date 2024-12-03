@@ -14,10 +14,10 @@ class conv_block(nn.Module):
         self.out_c = out_c
         self.convs = self.build_convs(in_c, out_c, n_conv)
 
-    def build_convs(in_c, out_c, n_conv):
+    def build_convs(self, in_c, out_c, n_conv):
         convs = []
         for _ in range(n_conv):
-            conv = nn.Conv2d(in_c, out_c, kernel_size=3, stride=1, padding=1)
+            conv = nn.Conv2d(in_c, out_c, kernel_size=3, padding=1)
             convs += [conv, nn.BatchNorm2d(out_c), nn.ReLU()]
             in_c = out_c # The image following the first conv will have out_c channels
         return nn.Sequential(*convs)         

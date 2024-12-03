@@ -1,20 +1,17 @@
-import torch.nn as nn
-from layers import residual_block
-from vgg import VGG
+from .layers import residual_block
+from .vgg import VGG
 
 class ResNet(VGG):
     """
     Inherits the VGG architecture and adds residual connections
     """
-    def __init__(self):
-        super(ResNet, self).__init__()
+    def __init__(self, input_img_c=1):
+        super(ResNet, self).__init__(input_img_c)
         self.res_conv_block_1 = residual_block(self.conv_block_1)
         self.res_conv_block_2 = residual_block(self.conv_block_2)
         self.res_conv_block_3 = residual_block(self.conv_block_3)
         self.res_conv_block_4 = residual_block(self.conv_block_4)
         self.res_conv_block_5 = residual_block(self.conv_block_5)
-        # Max pooling for encoding
-        self.pool = nn.MaxPool2d((2, 2))
 
     def encoder(self, inputs):
         x1 = self.res_conv_block_1(inputs)
@@ -27,14 +24,11 @@ class ResNet(VGG):
         p4 = self.pool(x4)
         x5 = self.res_conv_block_5(p4)
         p5 = self.pool(x5)
-        # Keep results for skip connections in UNet, x4 and x5 are redundant for skip connections so only keep x5
-        skip_connections =  [x1, x2, x3, x5]
+        skip_connections =  [x1, x2, x3, x4, x5]
         
         return p5, skip_connections
 
     def forward(self, inputs):
-        x, _ = self.encoder(inputs)
-
-        #TODO: Add classifcation layer
-        
-        return 
+        features, _ = self.encoder(inputs)
+        x = self.classification(features)
+        return x
