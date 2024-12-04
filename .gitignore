@@ -1,0 +1,21 @@
+# Ignore all .log files
+*.log
+
+# Ignore temporary files
+*.tmp
+
+# Ignore Python cache files (anywhere in the project)
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Ignore environment folders
+venv/
+.env/
+
+# Ignore all notebooks
+*.ipynb
+
+# Ignore the saved models
+results/*
+
