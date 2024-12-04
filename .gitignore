@@ -19,3 +19,6 @@ venv/
 # Ignore the saved models
 results/*
 
+# Ignore MNIST data
+data/MNIST/*
+
