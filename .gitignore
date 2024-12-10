@@ -21,4 +21,3 @@ results/*
 
 # Ignore MNIST data
 data/MNIST/*
-
