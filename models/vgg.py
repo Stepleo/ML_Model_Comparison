@@ -28,15 +28,7 @@ class VGG(nn.Module):
             nn.Linear(4096, 2), # Only two classes as we're gonna be doing binary classification
         )
 
-    def classification(self, features):
-        x_avg = self.avgpool(features)
-        x_avg_flat = torch.flatten(x_avg, 1)
-        x = self.classifier(x_avg_flat)
-        return x
-
-    def forward(self, inputs):
-
-        # Features extraction
+    def encoder(self, inputs):
         x1 = self.conv_block_1(inputs)
         p1 = self.pool(x1)
         x2 = self.conv_block_2(p1)
@@ -47,7 +39,17 @@ class VGG(nn.Module):
         p4 = self.pool(x4)
         x5 = self.conv_block_5(p4)
         features = self.pool(x5)
+        return features
 
+    def classification(self, features):
+        x_avg = self.avgpool(features)
+        x_avg_flat = torch.flatten(x_avg, 1)
+        x = self.classifier(x_avg_flat)
+        return x
+
+    def forward(self, inputs):
+        # Features extraction
+        features = self.encoder(inputs)
         # Classification
         x = self.classification(features)
 

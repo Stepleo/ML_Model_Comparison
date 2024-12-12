@@ -53,12 +53,17 @@ class decoder_block(nn.Module):
         super().__init__()
         # Upsampling by Transpose
         self.up = nn.ConvTranspose2d(in_c, out_c, kernel_size=2, stride=2, padding=0)
-        self.conv = conv_block(out_c + out_c, out_c, 1)
+        self.conv_skip = conv_block(out_c + out_c, out_c, 1)
+        self.bn = nn.BatchNorm2d(out_c)
+        self.relu = nn.ReLU()
 
-    def forward(self, inputs, skip):
+    def forward(self, inputs, skip = None):
         x = self.up(inputs)
-        # Concatenate with skip connection
-        x = torch.cat([x, skip], axis=1)
-        x = self.conv(x)
-        return x
+        if skip is not None: # Allow for skip to be none to use the same decoder blocks for VAE
+            # Concatenate with skip connection
+            x = torch.cat([x, skip], axis=1)
+            x = self.conv(x)
+        x_norm = self.bn(x)
+        x_act = self.relu(x_norm)
+        return x_act
     
