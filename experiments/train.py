@@ -6,6 +6,7 @@ def train_binary_classifier(
         model: torch.nn.Module, 
         train_loader: DataLoader, 
         test_loader: DataLoader, 
+        criterion = torch.nn.CrossEntropyLoss(),
         epochs: int = 10, 
         learning_rate: float = 1e-3, 
         device: str = "cuda",
@@ -17,6 +18,7 @@ def train_binary_classifier(
         model (torch.nn.Module): The PyTorch model to train.
         train_loader (DataLoader): DataLoader for training data.
         test_loader (DataLoader): DataLoader for testing data.
+        criterion: Loss used for training.
         epochs (int): Number of training epochs.
         learning_rate (float): Learning rate for the optimizer.
         device (str): Device to use for training ('cuda' or 'cpu').
@@ -26,8 +28,7 @@ def train_binary_classifier(
     model.to(device)
     
     # Define loss and optimizer
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
     
     for epoch in range(epochs):
         model.train()  # Set the model to training mode
@@ -58,7 +59,10 @@ def train_binary_classifier(
             for images, labels in test_loader:
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
-                _, predicted = torch.max(outputs, 1)
+                if model._get_name() == "VAE":
+                    _, predicted = torch.min(outputs, 1)
+                else:
+                    _, predicted = torch.max(outputs, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
         
@@ -139,12 +143,12 @@ def train_vae(
         print(f"Epoch [{epoch + 1}/{epochs}], Validation Loss: {validation_loss / len(test_loader):.4f}, Validation Recon: {validation_recon / len(test_loader):.4f}")
         
         # Save model checkpoint
-        checkpoint_path = os.path.join(checkpoint_dir, f"vae_epoch_{epoch + 1}.pth")
-        torch.save({
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': running_loss / len(train_loader),
-            'validation_loss': validation_loss / len(test_loader)
-        }, checkpoint_path)
-        print(f"Model checkpoint saved at {checkpoint_path}")            
+        # checkpoint_path = os.path.join(checkpoint_dir, f"vae_epoch_{epoch + 1}.pth")
+        # torch.save({
+        #     'epoch': epoch + 1,
+        #     'model_state_dict': model.state_dict(),
+        #     'optimizer_state_dict': optimizer.state_dict(),
+        #     'loss': running_loss / len(train_loader),
+        #     'validation_loss': validation_loss / len(test_loader)
+        # }, checkpoint_path)
+        # print(f"Model checkpoint saved at {checkpoint_path}")            

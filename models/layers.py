@@ -62,7 +62,7 @@ class decoder_block(nn.Module):
         if skip is not None: # Allow for skip to be none to use the same decoder blocks for VAE
             # Concatenate with skip connection
             x = torch.cat([x, skip], axis=1)
-            x = self.conv(x)
+            x = self.conv_skip(x)
         x_norm = self.bn(x)
         x_act = self.relu(x_norm)
         return x_act
