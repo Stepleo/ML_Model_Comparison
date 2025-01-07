@@ -132,10 +132,11 @@ def train_vae(
     epochs: int = 10, 
     learning_rate: float = 1e-3, 
     device: str = "cuda", 
-    checkpoint_dir: str = "./results/checkpoints"
+    save_results: bool = False,
+    description: str = None,
 ):
     """
-    Trains a Variational Autoencoder (VAE) on a given dataset and saves model checkpoints.
+    Trains a Variational Autoencoder (VAE) on a given dataset and logs metrics.
 
     Args:
         model (torch.nn.Module): The VAE model to train.
@@ -144,19 +145,38 @@ def train_vae(
         epochs (int): Number of training epochs.
         learning_rate (float): Learning rate for the optimizer.
         device (str): Device to use for training ('cuda' or 'cpu').
-        checkpoint_dir (str): Directory to save model checkpoints.
+        save_results (bool): Whether to save training metrics as a pickle file.
+        description (str): Additional description that appears in the pickle file name.
     """
-    import os
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    
+    # Hardcoded directory for saving results
+    results_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/training"
+    os.makedirs(results_dir, exist_ok=True)
+
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    
+
+    # Metrics dictionary to store training and validation loss components
+    metrics = {
+        "training_loss": [],
+        "training_recon_loss": [],
+        "training_kld_loss": [],
+        "validation_loss": [],
+        "validation_recon_loss": [],
+        "validation_kld_loss": [],
+        "training_time": [],
+        "gradient_norm": [],
+    }
+
     for epoch in range(epochs):
         # Training phase
         model.train()
         running_loss = 0.0
         running_recon = 0.0
+        running_kld = 0.0
+        grad_norm = 0.0
+
+        # Start epoch timer
+        start_time = time.time()
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs}", leave=False)
         
         for images, _ in progress_bar:
@@ -167,22 +187,42 @@ def train_vae(
             losses = model.loss_function(inputs, outputs, mu, log_var)
             loss = losses['loss']
             recon_loss = losses['Reconstruction_Loss']
+            kld_loss = losses['KLD']
             
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
+
+            # Compute gradient norm
+            grad_norm += sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)
+
             optimizer.step()
             
             running_loss += loss.item()
             running_recon += recon_loss.item()
+            running_kld += kld_loss.item()
             progress_bar.set_postfix({'Loss': running_loss / len(train_loader)})
         
-        print(f"Epoch [{epoch + 1}/{epochs}], Training Loss: {running_loss / len(train_loader):.4f}, Reconstruction Loss: {running_recon / len(train_loader):.4f}")
+        # End epoch timer
+        epoch_time = time.time() - start_time
+        epoch_loss = running_loss / len(train_loader)
+        epoch_recon_loss = running_recon / len(train_loader)
+        epoch_kld_loss = running_kld / len(train_loader)
+        epoch_grad_norm = grad_norm / len(train_loader)
+
+        metrics["training_loss"].append(epoch_loss)
+        metrics["training_recon_loss"].append(epoch_recon_loss)
+        metrics["training_kld_loss"].append(epoch_kld_loss)
+        metrics["training_time"].append(epoch_time)
+        metrics["gradient_norm"].append(epoch_grad_norm)
+
+        print(f"Epoch [{epoch + 1}/{epochs}], Training Loss: {epoch_loss:.4f}, Reconstruction Loss: {epoch_recon_loss:.4f}, KLD Loss: {epoch_kld_loss:.4f}, Time: {epoch_time:.2f}s, Gradient Norm: {epoch_grad_norm:.4f}")
         
         # Validation phase
         model.eval()
         validation_loss = 0.0
         validation_recon = 0.0
+        validation_kld = 0.0
         with torch.no_grad():
             for images, _ in test_loader:
                 images = images.to(device)
@@ -192,19 +232,28 @@ def train_vae(
                 losses = model.loss_function(inputs, outputs, mu, log_var)
                 loss = losses['loss']
                 recon_loss = losses['Reconstruction_Loss']
+                kld_loss = losses['KLD']
                 
                 validation_loss += loss.item()
                 validation_recon += recon_loss.item()
-        
-        print(f"Epoch [{epoch + 1}/{epochs}], Validation Loss: {validation_loss / len(test_loader):.4f}, Validation Recon: {validation_recon / len(test_loader):.4f}")
-        
-        # Save model checkpoint
-        # checkpoint_path = os.path.join(checkpoint_dir, f"vae_epoch_{epoch + 1}.pth")
-        # torch.save({
-        #     'epoch': epoch + 1,
-        #     'model_state_dict': model.state_dict(),
-        #     'optimizer_state_dict': optimizer.state_dict(),
-        #     'loss': running_loss / len(train_loader),
-        #     'validation_loss': validation_loss / len(test_loader)
-        # }, checkpoint_path)
-        # print(f"Model checkpoint saved at {checkpoint_path}")            
+                validation_kld += kld_loss.item()
+
+        epoch_val_loss = validation_loss / len(test_loader)
+        epoch_val_recon_loss = validation_recon / len(test_loader)
+        epoch_val_kld_loss = validation_kld / len(test_loader)
+
+        metrics["validation_loss"].append(epoch_val_loss)
+        metrics["validation_recon_loss"].append(epoch_val_recon_loss)
+        metrics["validation_kld_loss"].append(epoch_val_kld_loss)
+
+        print(f"Epoch [{epoch + 1}/{epochs}], Validation Loss: {epoch_val_loss:.4f}, Validation Recon: {epoch_val_recon_loss:.4f}, Validation KLD: {epoch_val_kld_loss:.4f}")
+
+    # Save metrics dictionary as a pickle file if save_results is True
+    if save_results:
+        file_name = f"{model._get_name()}_{epochs}_epochs_{learning_rate}_lr_{description}.pkl"
+        file_path = os.path.join(results_dir, file_name)
+        with open(file_path, "wb") as f:
+            pickle.dump(metrics, f)
+
+        print(f"Training metrics saved to {file_path}")
+            
