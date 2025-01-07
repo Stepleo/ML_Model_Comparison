@@ -5,8 +5,8 @@ class ResNet(VGG):
     """
     Inherits the VGG architecture and adds residual connections
     """
-    def __init__(self, input_img_c=1):
-        super(ResNet, self).__init__(input_img_c)
+    def __init__(self, input_img_size, input_img_c=1):
+        super(ResNet, self).__init__(input_img_size, input_img_c)
         self.res_conv_block_1 = residual_block(self.conv_block_1)
         self.res_conv_block_2 = residual_block(self.conv_block_2)
         self.res_conv_block_3 = residual_block(self.conv_block_3)

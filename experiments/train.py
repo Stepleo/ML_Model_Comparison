@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 def train_binary_classifier(
         model: torch.nn.Module, 
         train_loader: DataLoader, 
-        test_loader: DataLoader, 
+        test_loader: DataLoader = None, 
         criterion = torch.nn.CrossEntropyLoss(),
         epochs: int = 10, 
         learning_rate: float = 1e-3, 
@@ -53,26 +53,27 @@ def train_binary_classifier(
         print(f"Epoch [{epoch + 1}/{epochs}], Loss: {running_loss / len(train_loader):.4f}")
         
         # Validation step
-        model.eval()  # Set the model to evaluation mode
-        correct, total = 0, 0
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                if model._get_name() == "VAE":
-                    _, predicted = torch.min(outputs, 1)
-                else:
-                    _, predicted = torch.max(outputs, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-        
-        print(f"Validation Accuracy: {100 * correct / total:.2f}%")
+        if test_loader is not None:
+            model.eval()  # Set the model to evaluation mode
+            correct, total = 0, 0
+            with torch.no_grad():
+                for images, labels in test_loader:
+                    images, labels = images.to(device), labels.to(device)
+                    outputs = model(images)
+                    if model._get_name() == "VAE":
+                        _, predicted = torch.min(outputs, 1)
+                    else:
+                        _, predicted = torch.max(outputs, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+            
+            print(f"Validation Accuracy: {100 * correct / total:.2f}%")
 
 
 def train_vae(
     model: torch.nn.Module, 
     train_loader: DataLoader, 
-    test_loader: DataLoader, 
+    test_loader: DataLoader = None, 
     epochs: int = 10, 
     learning_rate: float = 1e-3, 
     device: str = "cuda", 
@@ -124,23 +125,24 @@ def train_vae(
         print(f"Epoch [{epoch + 1}/{epochs}], Training Loss: {running_loss / len(train_loader):.4f}, Reconstruction Loss: {running_recon / len(train_loader):.4f}")
         
         # Validation phase
-        model.eval()
-        validation_loss = 0.0
-        validation_recon = 0.0
-        with torch.no_grad():
-            for images, _ in test_loader:
-                images = images.to(device)
-                
-                # Forward pass
-                outputs, inputs, mu, log_var = model(images)
-                losses = model.loss_function(inputs, outputs, mu, log_var)
-                loss = losses['loss']
-                recon_loss = losses['Reconstruction_Loss']
-                
-                validation_loss += loss.item()
-                validation_recon += recon_loss.item()
-        
-        print(f"Epoch [{epoch + 1}/{epochs}], Validation Loss: {validation_loss / len(test_loader):.4f}, Validation Recon: {validation_recon / len(test_loader):.4f}")
+        if test_loader is not None:
+            model.eval()
+            validation_loss = 0.0
+            validation_recon = 0.0
+            with torch.no_grad():
+                for images, _ in test_loader:
+                    images = images.to(device)
+                    
+                    # Forward pass
+                    outputs, inputs, mu, log_var = model(images)
+                    losses = model.loss_function(inputs, outputs, mu, log_var)
+                    loss = losses['loss']
+                    recon_loss = losses['Reconstruction_Loss']
+                    
+                    validation_loss += loss.item()
+                    validation_recon += recon_loss.item()
+            
+            print(f"Epoch [{epoch + 1}/{epochs}], Validation Loss: {validation_loss / len(test_loader):.4f}, Validation Recon: {validation_recon / len(test_loader):.4f}")
         
         # Save model checkpoint
         # checkpoint_path = os.path.join(checkpoint_dir, f"vae_epoch_{epoch + 1}.pth")

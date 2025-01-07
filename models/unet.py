@@ -8,7 +8,7 @@ class UNet(ResNet):
     UNet inheriting from a ResNet encoder.
     """
     def __init__(self, resnet: ResNet):
-        super(UNet, self).__init__()
+        super(UNet, self).__init__(resnet.input_img_size)
         self.encoder = resnet.encoder
         self.b = conv_block(512, 1024, 1)
         self.d1 = decoder_block(1024, 512)

@@ -1,5 +1,7 @@
+import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
+from torchvision.transforms import functional as F
 
 def get_mnist():
     """
@@ -27,23 +29,34 @@ def get_mnist():
 
 def preprocessing_transform(size: int = 224):
     """
-    Returns a transformation pipeline for preprocessing MNIST images.
+    Returns a transformation pipeline for preprocessing images.
     
-    The transformations include resizing to the specified size, converting to a tensor, 
-    and normalizing the pixel values to the range [-1, 1].
+    Handles both PIL images and tensors by applying resizing, 
+    converting to a tensor (if needed), and normalizing pixel values.
     
     Args:
         size (int): The size to resize the image to (default: 224).
     
     Returns:
-        torchvision.transforms.Compose: The transformation pipeline.
+        Callable: A transformation function that can handle both tensors and PIL images.
     """
-    transform = transforms.Compose([
-        transforms.Resize((size, size)),  # Resize images to (size, size)
-        transforms.ToTensor(),  
-        transforms.Normalize((0.5,), (0.5,))  # Normalize to range [-1, 1]
-    ])
-    return transform
+    class TensorCompatibleTransform:
+        def __call__(self, image):
+            if isinstance(image, torch.Tensor):
+                # If image is a tensor, resize and normalize directly
+                image = F.resize(image, (size, size))
+                image = F.normalize(image, mean=[0.5], std=[0.5])
+            else:
+                # If image is a PIL image, apply standard transforms
+                transform = transforms.Compose([
+                    transforms.Resize((size, size)),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5,), (0.5,)),
+                ])
+                image = transform(image)
+            return image
+    
+    return TensorCompatibleTransform()
 
 
 def get_dataloader(
@@ -51,7 +64,7 @@ def get_dataloader(
     test_subset: Subset, 
     transform: transforms.Compose = None, 
     size: int = 224, 
-    batch_size: int = 16
+    batch_size: int = 16,
 ):
     """
     Preprocesses given subsets for binary classification
