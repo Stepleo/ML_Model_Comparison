@@ -1,9 +1,98 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from .layers import MLPEncoder, MLPDecoder
 from .unet import UNet
 
-class VAE(UNet):
+
+class VAE(nn.Module):
+    """
+    Variational Autoencoder (VAE) with support for latent space classification.
+    """
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        latent_dim: int,
+        num_layers_encoder: int = 2,
+        num_layers_decoder: int = 3,
+        beta: float = 0.05,
+        classification_mode: bool = False
+    ):
+        super(VAE, self).__init__()
+        self.encoder = MLPEncoder(input_dim, hidden_dim, latent_dim, num_layers_encoder)
+        self.decoder = MLPDecoder(latent_dim, hidden_dim, input_dim, num_layers_decoder)
+        self.beta = beta  # KL importance parameter
+        self.classification_mode = classification_mode
+
+        # Classification head
+        self.svm_layer = nn.Linear(latent_dim, 2)  # Assuming binary classification
+
+    def reparameterize(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
+        """Reparameterization trick: z = eps * std + mu."""
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return eps * std + mu
+
+    def forward(self, x: torch.Tensor):
+        """
+        Full forward pass through the VAE. 
+        If classification_mode is True, outputs the latent space class prediction.
+        """
+        batch_size = x.size(0)
+        x_flat = x.view(batch_size, -1)  # Flatten for linear layers
+        mu, log_var = self.encoder(x_flat)
+        z = self.reparameterize(mu, log_var)
+
+        if self.classification_mode:
+            return self.svm_layer(z)  # Output class logits
+
+        x_hat = self.decoder(z).view(x.size())  # Reshape back to input dimensions
+        return x_hat, x, mu, log_var
+
+    def loss_function(
+        self, x: torch.Tensor, x_hat: torch.Tensor, mu: torch.Tensor, log_var: torch.Tensor
+    ):
+        """Computes the VAE loss (reconstruction + KL divergence)."""
+        recon_loss = F.mse_loss(x_hat, x, reduction='sum')
+        kl_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+        total_loss = recon_loss + self.beta * kl_loss
+        return {
+            "loss": total_loss,
+            "Reconstruction_Loss": recon_loss,
+            "KLD": kl_loss
+        }
+
+    def sample(self, num_samples: int, image_size: int = 64, device: torch.device = "cuda"):
+        """Samples from the latent space and decodes to generate data."""
+        z = torch.randn(num_samples, self.encoder.mu.out_features).to(device)
+        samples = self.decoder(z).view(torch.Size([num_samples, image_size, image_size]))
+        return samples
+
+    def generate(self, x: torch.Tensor):
+        """Given input x, returns the reconstructed image."""
+        return self.forward(x)[0]
+
+
+class SVMLoss(nn.Module):
+    def __init__(self):
+        super(SVMLoss, self).__init__()
+
+    def forward(self, predictions, targets):
+        """
+        SVM loss: max(0, 1 - y * f), where y is the target (+1 or -1)
+        and f is the raw prediction (logit).
+        """
+        # Convert targets from {0, 1} to {-1, 1}
+        targets = 2 * targets - 1  # Converts 0 to -1 and 1 remains 1
+
+        # Calculate hinge loss
+        loss = torch.mean(torch.clamp(1 - predictions.t() * targets, min=0))
+        return loss
+    
+
+# Does not work
+class VAE_conv(UNet):
     """
     Inherits from the UNet to leverage the feature extraction and
     the image reconstruction from feature maps.
@@ -14,7 +103,7 @@ class VAE(UNet):
     of the decoder through a MSE minimization and the KL divergence is explicit thanks to the reparametrization.
     """
     def __init__(self, resnet, beta=0.005, classification_mode=False):
-        super(VAE, self).__init__(resnet)
+        super(VAE_conv, self).__init__(resnet.input_img_size, resnet)
         # Setup for the reparametrization trick
         self.fc_mu = nn.Linear(resnet.final_dim * resnet.final_dim, 8)
         self.fc_var = nn.Linear(resnet.final_dim * resnet.final_dim, 8)
@@ -119,12 +208,4 @@ class VAE(UNet):
         """
         return self.forward(x)[0]
 
-
-
-class SVMLoss(nn.Module):
-    def __init__(self):
-        super(SVMLoss, self).__init__()
-
-    def forward(self, predictions, targets):
-        return torch.sum(torch.clamp(1 - predictions.t()*targets, min=0))/predictions.size()[0]
     

@@ -1,6 +1,11 @@
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 import torch.nn as nn
 from models.layers import conv_block, residual_block, decoder_block
+from sklearn.linear_model import LinearRegression
+from sklearn.manifold import TSNE
+from matplotlib.colors import ListedColormap
 
 class BaseVisualizationModel(nn.Module):
     """
@@ -95,10 +100,10 @@ def extract_conv_layer(block):
     Returns:
         layer (nn.Conv2d): last convolution of the block.
     """
-    if isinstance(block, conv_block):
+    if isinstance(block, conv_block) or block._get_name() == "conv_block":
         all_layers = [layer for layer in block.convs if isinstance(layer, nn.Conv2d)]
         layer = all_layers[-1]
-    elif isinstance(block, residual_block):
+    elif isinstance(block, residual_block) or block._get_name() == "residual_block":
         # Return the convolution of the residual in this case
         all_layers = [layer for layer in block.downsample if isinstance(layer, nn.Conv2d)]
         layer = all_layers[-1]
@@ -107,7 +112,7 @@ def extract_conv_layer(block):
     elif isinstance(block, decoder_block):
         raise Exception("Not implemented for conv transpose yet.")
     else:
-        raise Exception("Block type not recognized.")
+        raise Exception(f"Block type {type(block)} not recognized.")
     return layer
 
 
@@ -147,4 +152,236 @@ def plot_feature_maps(feature_maps, num_features=10):
     for i in range(min(num_features, feature_maps.shape[0])):
         axes[i].imshow(feature_maps[i], cmap="gray")
         axes[i].axis("off")
+    plt.show()
+
+
+def generate_hyperplane_points(svm_weights, svm_bias, latent_dim, num_points=1000):
+    """
+    Generate points in the latent space that satisfy the hyperplane equation
+    w.T * x + b = 0.
+
+    Args:
+        svm_weights (np.ndarray): SVM weight vector of shape (latent_dim,).
+        svm_bias (float): SVM bias term.
+        latent_dim (int): Dimensionality of the latent space.
+        num_points (int): Number of points to generate.
+
+    Returns:
+        np.ndarray: Points on the hyperplane of shape (num_points, latent_dim).
+    """
+    # Normalize weights to ensure consistent scaling
+    svm_weights = svm_weights / np.linalg.norm(svm_weights)
+
+    # Find basis vectors orthogonal to svm_weights
+    orthogonal_basis = []
+    identity_matrix = np.eye(latent_dim)
+
+    for i in range(latent_dim):
+        vec = identity_matrix[i]
+        projection = np.dot(vec, svm_weights) * svm_weights
+        orthogonal_vec = vec - projection
+
+        if np.linalg.norm(orthogonal_vec) > 1e-6:  # Avoid numerical issues
+            orthogonal_vec /= np.linalg.norm(orthogonal_vec)
+            orthogonal_basis.append(orthogonal_vec)
+
+    orthogonal_basis = np.array(orthogonal_basis)
+
+    # Generate random linear combinations of basis vectors
+    random_coefficients = np.random.randn(num_points, orthogonal_basis.shape[0])
+    hyperplane_points = random_coefficients @ orthogonal_basis
+
+    # Adjust points to satisfy the hyperplane equation
+    adjustment = -(svm_bias + hyperplane_points @ svm_weights) / np.dot(svm_weights, svm_weights)
+    hyperplane_points += adjustment[:, np.newaxis] * svm_weights
+
+    return hyperplane_points
+
+
+def plot_vae_tsne_with_svm_boundary(
+    vae_model,
+    dataloader,
+    save_path: str = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/vae_tsne_with_svm.jpg",
+    title: str = "2D t-SNE of VAE Latent Space with SVM Boundary",
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+):
+    """
+    Visualizes a VAE's latent space using t-SNE with an SVM decision boundary.
+
+    Args:
+        vae_model: The trained VAE model with an SVM classification layer.
+        dataloader: A PyTorch DataLoader providing images and labels.
+        save_path (str): Path to save the generated plot.
+        title (str): Title of the plot.
+        device (str): Device to use for computations ("cuda" or "cpu").
+    """
+    vae_model.to(device)
+    vae_model.eval()
+
+    latent_vectors = []
+    labels = []
+
+    # Extract latent vectors and labels
+    with torch.no_grad():
+        for images, lbls in dataloader:
+            images = images.to(device)
+            lbls = lbls.to(device)
+
+            # Forward pass to get latent embeddings
+            _, _, mu, _ = vae_model(images)
+            latent_vectors.append(mu.cpu().numpy())
+            labels.append(lbls.cpu().numpy())
+
+    latent_vectors = np.concatenate(latent_vectors, axis=0)
+    labels = np.concatenate(labels, axis=0)
+
+    # Apply t-SNE to reduce latent space to 2D
+    tsne = TSNE(n_components=2, perplexity=50, random_state=42)
+    tsne_features = tsne.fit_transform(latent_vectors)
+
+    # Compute the decision boundary in the latent space
+    svm_weights = vae_model.svm_layer.weight.detach().cpu().numpy()[0]
+    svm_bias = vae_model.svm_layer.bias.detach().cpu().numpy()[0]
+
+    boundary_points = generate_hyperplane_points(svm_weights, svm_bias, latent_vectors.shape[1])
+    all_points = np.vstack([latent_vectors, boundary_points])
+
+    tsne = TSNE(n_components=2, perplexity=50, random_state=42)
+    tsne_results = tsne.fit_transform(all_points)
+
+    tsne_features = tsne_results[: len(latent_vectors)]
+    tsne_boundary = tsne_results[len(latent_vectors):]
+
+    # Filter boundary points for regression
+    first_coord = tsne_boundary[:, 0]
+    lower_quartile, upper_quartile = np.percentile(first_coord, [1, 99])
+    filtered_indices = (first_coord >= lower_quartile) & (first_coord <= upper_quartile)
+    filtered_boundary = tsne_boundary[filtered_indices]
+
+    # Linear regression on boundary points
+    regressor = LinearRegression()
+    regressor.fit(filtered_boundary[:, 0].reshape(-1, 1), filtered_boundary[:, 1])
+
+    x_line = np.linspace(tsne_boundary[:, 0].min(), tsne_boundary[:, 0].max(), 500)
+    y_line = regressor.predict(x_line.reshape(-1, 1))
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=(8, 6))
+    cmap = ListedColormap(["blue", "red"])
+
+    scatter = ax.scatter(
+        tsne_features[:, 0],
+        tsne_features[:, 1],
+        c=labels,
+        cmap=cmap,
+        s=20,
+        edgecolor="none",
+        label="Data Points"
+    )
+
+    # Overlay SVM decision boundary points
+    ax.scatter(
+        tsne_boundary[:, 0],
+        tsne_boundary[:, 1],
+        color="black",
+        s=5,
+        label="SVM Boundary Points"
+    )
+
+    # Plot regression line
+    ax.plot(
+        x_line,
+        y_line,
+        color="green",
+        linestyle="--",
+        label="SVM Boundary Line"
+    )
+
+    ax.set_xlabel("t-SNE Dimension 1")
+    ax.set_ylabel("t-SNE Dimension 2")
+    ax.legend()
+
+    if title:
+        ax.set_title(title)
+
+    # Add colorbar for class labels
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_ticks([0.25, 0.75])
+    cbar.set_ticklabels(["Class 0", "Class 1"])
+
+    plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.show()
+
+
+
+
+def plot_vae_outputs(model, data_loader, device="cuda", num_images=8):
+    """
+    Visualizes the input and output of a Variational Autoencoder (VAE).
+    
+    Args:
+        model (torch.nn.Module): The trained VAE model.
+        data_loader (DataLoader): DataLoader with test or validation data.
+        device (str): Device to use for computation ('cuda' or 'cpu').
+        num_images (int): Number of images to visualize.
+    """
+    model.to(device)
+    model.eval()
+    
+    # Get a batch of data from the data loader
+    images, _ = next(iter(data_loader))
+    batch_size = images.size(0)
+    num_images = min(num_images, batch_size)  # Adjust number of images to plot based on batch size
+    images = images[:num_images].to(device)
+    
+    # Get the reconstructed outputs
+    with torch.no_grad():
+        reconstructed, _, _, _ = model(images)
+    
+    images = images.cpu()
+    reconstructed = reconstructed.cpu()
+    
+    # Plot original and reconstructed images
+    fig, axes = plt.subplots(2, num_images, figsize=(15, 5))
+    for i in range(num_images):
+        # Original images
+        axes[0, i].imshow(images[i].squeeze(0), cmap="gray")
+        axes[0, i].axis("off")
+        axes[0, i].set_title("Original")
+        
+        # Reconstructed images
+        axes[1, i].imshow(reconstructed[i].squeeze(0), cmap="gray")
+        axes[1, i].axis("off")
+        axes[1, i].set_title("Reconstructed")
+    
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda"):
+    """
+    Visualizes the samples generated by the Variational Autoencoder (VAE).
+    
+    Args:
+        model (torch.nn.Module): The trained VAE model.
+        num_samples (int): Number of samples to visualize.
+        device (str): Device to use for computation ('cuda' or 'cpu').
+    """
+    model.to(device)
+    model.eval()
+
+    # Generate samples
+    with torch.no_grad():
+        samples = model.sample(num_samples, image_size, device)
+
+    samples = samples.cpu()
+
+    # Plot the generated samples
+    fig, axes = plt.subplots(1, num_samples, figsize=(15, 5))
+    for i in range(num_samples):
+        axes[i].imshow(samples[i].squeeze(0), cmap="gray")
+        axes[i].axis("off")
+        axes[i].set_title(f"Sample {i+1}")
+    
+    plt.tight_layout()
     plt.show()

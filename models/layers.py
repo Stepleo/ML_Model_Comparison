@@ -67,3 +67,63 @@ class decoder_block(nn.Module):
         x_act = self.relu(x_norm)
         return x_act
     
+class MLPEncoder(nn.Module):
+    """Flexible Encoder with configurable number of layers."""
+    def __init__(self, input_dim: int, hidden_dim: int, latent_dim: int, num_layers: int = 2):
+        """
+        Args:
+            input_dim (int): Dimensionality of input features.
+            hidden_dim (int): Dimensionality of hidden layers.
+            latent_dim (int): Dimensionality of latent space.
+            num_layers (int): Number of hidden layers in the encoder.
+        """
+        super(MLPEncoder, self).__init__()
+        self.num_layers = num_layers
+
+        # Create layers dynamically
+        layers = []
+        in_dim = input_dim
+        for _ in range(num_layers):
+            layers.append(nn.Linear(in_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            in_dim = hidden_dim
+
+        self.encoder = nn.Sequential(*layers)
+        self.mu = nn.Linear(hidden_dim, latent_dim)
+        self.log_var = nn.Linear(hidden_dim, latent_dim)
+
+    def forward(self, x: torch.Tensor):
+        h = self.encoder(x)
+        mu = self.mu(h)
+        log_var = self.log_var(h)
+        return mu, log_var
+
+    
+class MLPDecoder(nn.Module):
+    """Flexible Decoder with configurable number of layers."""
+    def __init__(self, latent_dim: int, hidden_dim: int, output_dim: int, num_layers: int = 2):
+        """
+        Args:
+            latent_dim (int): Dimensionality of latent space.
+            hidden_dim (int): Dimensionality of hidden layers.
+            output_dim (int): Dimensionality of output features.
+            num_layers (int): Number of hidden layers in the decoder.
+        """
+        super(MLPDecoder, self).__init__()
+        self.num_layers = num_layers
+
+        # Create layers dynamically
+        layers = []
+        in_dim = latent_dim
+        for _ in range(num_layers):
+            layers.append(nn.Linear(in_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            in_dim = hidden_dim
+
+        layers.append(nn.Linear(hidden_dim, output_dim))
+        layers.append(nn.Sigmoid())
+
+        self.decoder = nn.Sequential(*layers)
+
+    def forward(self, z: torch.Tensor):
+        return self.decoder(z)

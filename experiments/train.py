@@ -103,10 +103,7 @@ def train_binary_classifier(
             for images, labels in test_loader:
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
-                if model._get_name() == "VAE":
-                    _, predicted = torch.min(outputs, 1)
-                else:
-                    _, predicted = torch.max(outputs, 1)
+                _, predicted = torch.max(outputs, 1)
                 total_val += labels.size(0)
                 correct_val += (predicted == labels).sum().item()
         
