@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 from .layers import conv_block
+from utils.visualization import BaseVisualizationModel
 
-class VGG(nn.Module):
+class VGG(BaseVisualizationModel):
     """
     Follows the VGG_19 architecture described in the following list:
     [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
