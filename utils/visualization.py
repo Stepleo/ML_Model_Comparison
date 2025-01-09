@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
 import torch
 import torch.nn as nn
@@ -372,7 +373,10 @@ def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda"):
 
     # Generate samples
     with torch.no_grad():
-        samples = model.sample(num_samples, image_size, device)
+        if model._get_name() == "VAE_conv":
+            samples = model.sample(num_samples, device)
+        else:
+            samples = model.sample(num_samples, image_size, device)
 
     samples = samples.cpu()
 
@@ -383,5 +387,79 @@ def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda"):
         axes[i].axis("off")
         axes[i].set_title(f"Sample {i+1}")
     
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_training_metrics(metrics_list):
+    """
+    Plots training metrics from a list of dictionaries.
+    
+    Args:
+        metrics_list (list): List of dictionaries containing training metrics.
+            Each dictionary should have keys:
+                - 'name': A string representing the name of the training run.
+                - 'training_loss': List of training loss values.
+                - 'training_accuracy': List of training accuracy values.
+                - 'validation_accuracy': List of validation accuracy values.
+                - 'training_time': List of training time values per epoch.
+                - 'gradient_norm': List of gradient norms per epoch.
+    """
+    if not metrics_list:
+        print("No metrics provided for plotting.")
+        return
+    
+    # Generate a consistent color map for all runs
+    num_runs = len(metrics_list)
+    color_map = cm.get_cmap("tab20b", num_runs)  # Use 'tab10' colormap with one color per run
+
+    # Prepare figure
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    loss_ax, acc_ax, time_ax, grad_ax = axes.flatten()
+
+    for idx, metrics in enumerate(metrics_list):
+        name = metrics.get("name", f"Run {idx + 1}")
+        color = color_map(idx)  # Get the color for this run
+        epochs = list(range(1, len(metrics['training_loss']) + 1))
+        
+        # Plot training loss
+        loss_ax.plot(epochs, metrics['training_loss'], label=f"{name} - Training Loss", color=color)
+        
+        # Plot training and validation accuracy
+        acc_ax.plot(epochs, metrics['training_accuracy'], label=f"{name} - Training Accuracy", color=color)
+        acc_ax.plot(epochs, metrics['validation_accuracy'], linestyle='--', label=f"{name} - Validation Accuracy", color=color)
+        
+        # Plot training time per epoch
+        time_ax.plot(epochs, metrics['training_time'], label=f"{name} - Training Time", color=color)
+        
+        # Plot gradient norm per epoch
+        grad_ax.plot(epochs, metrics['gradient_norm'], label=f"{name} - Gradient Norm", color=color)
+    
+    # Set titles and labels for each plot
+    loss_ax.set_title("Training Loss")
+    loss_ax.set_xlabel("Epochs")
+    loss_ax.set_ylabel("Loss")
+    loss_ax.legend()
+    loss_ax.grid(True)
+    
+    acc_ax.set_title("Training and Validation Accuracy")
+    acc_ax.set_xlabel("Epochs")
+    acc_ax.set_ylabel("Accuracy")
+    acc_ax.legend()
+    acc_ax.grid(True)
+    
+    time_ax.set_title("Training Time per Epoch")
+    time_ax.set_xlabel("Epochs")
+    time_ax.set_ylabel("Time (seconds)")
+    time_ax.legend()
+    time_ax.grid(True)
+    
+    grad_ax.set_title("Gradient Norm per Epoch")
+    grad_ax.set_xlabel("Epochs")
+    grad_ax.set_ylabel("Gradient Norm")
+    grad_ax.legend()
+    grad_ax.grid(True)
+
+    # Adjust layout and show plots
     plt.tight_layout()
     plt.show()
