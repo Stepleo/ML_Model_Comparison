@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 import torch
+import os
 import torch.nn as nn
 from models.layers import conv_block, residual_block, decoder_block
 from sklearn.linear_model import LinearRegression
@@ -17,6 +18,7 @@ class BaseVisualizationModel(nn.Module):
         self,
         layer_name,
         num_filters=6,
+        save_name=None,
     ):
         """
         Visualizes filters of a specified convolutional layer.
@@ -24,6 +26,7 @@ class BaseVisualizationModel(nn.Module):
         Args:
             layer_name (str): Name of the layer whose filters to visualize.
             num_filters (int): Number of filters to visualize.
+            save_name (str): Name of saved plot.
         """
         block = dict(self.named_modules()).get(layer_name, None)
         if block is None:
@@ -33,7 +36,7 @@ class BaseVisualizationModel(nn.Module):
 
         filters = outside_conv.weight.detach().cpu()
 
-        plot_filters(filters, num_filters)
+        plot_filters(filters, num_filters, save_name)
 
 
     def visualize_feature_maps(
@@ -43,6 +46,7 @@ class BaseVisualizationModel(nn.Module):
             num_maps=6,
             relevance_based=False,
             target_class=None,
+            save_name=None,
         ):
         """
         Visualizes the feature maps produced by a layer for a given input.
@@ -53,6 +57,7 @@ class BaseVisualizationModel(nn.Module):
             num_maps (int): Number of feature maps to visualize.
             relevance_based (bool): If True, visualize feature maps by relevance.
             target_class (int or None): Target class for relevance computation (used with relevance_based=True).
+            save_name (str): Name of saved plot.
         """
         layer = dict(self.named_modules()).get(layer_name, None)
         if layer is None:
@@ -117,13 +122,14 @@ def extract_conv_layer(block):
     return layer
 
 
-def plot_filters(filters, num_filters=10):
+def plot_filters(filters, num_filters=10, save_name=None):
     """
     Plots filters from a convolutional layer.
     
     Args:
         filters (np.ndarray): Filters of shape [out_channels, H, W].
         num_filters (int): Number of filters to display.
+        save_name (str): Name of saved plot.
     """
     # Normalize filters for visualization
     min_val, max_val = filters.min(), filters.max()
@@ -135,14 +141,19 @@ def plot_filters(filters, num_filters=10):
         axes[i].imshow(filters[i][0], cmap="gray") # Only first kernel of each filter
         axes[i].axis("off")
     plt.show()
+    if save_name is not None:
+        image_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/"
+        plt.savefig(image_path + save_name + ".png")
 
-def plot_feature_maps(feature_maps, num_features=10):
+
+def plot_feature_maps(feature_maps, num_features=10, save_name=None):
     """
     Plots feature maps from a given layer.
     
     Args:
         feature_maps (np.ndarray): Feature maps of shape [C, H, W].
         num_features (int): Number of feature maps to display.
+        save_name (str): Name of saved plot.
     """
     # Normalize feature maps for visualization
     min_val, max_val = feature_maps.min(), feature_maps.max()
@@ -154,6 +165,9 @@ def plot_feature_maps(feature_maps, num_features=10):
         axes[i].imshow(feature_maps[i], cmap="gray")
         axes[i].axis("off")
     plt.show()
+    if save_name is not None:
+        image_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/"
+        plt.savefig(image_path + save_name + ".png")
 
 
 def generate_hyperplane_points(svm_weights, svm_bias, latent_dim, num_points=1000):
@@ -253,19 +267,6 @@ def plot_vae_tsne_with_svm_boundary(
     tsne_features = tsne_results[: len(latent_vectors)]
     tsne_boundary = tsne_results[len(latent_vectors):]
 
-    # Filter boundary points for regression
-    first_coord = tsne_boundary[:, 0]
-    lower_quartile, upper_quartile = np.percentile(first_coord, [1, 99])
-    filtered_indices = (first_coord >= lower_quartile) & (first_coord <= upper_quartile)
-    filtered_boundary = tsne_boundary[filtered_indices]
-
-    # Linear regression on boundary points
-    regressor = LinearRegression()
-    regressor.fit(filtered_boundary[:, 0].reshape(-1, 1), filtered_boundary[:, 1])
-
-    x_line = np.linspace(tsne_boundary[:, 0].min(), tsne_boundary[:, 0].max(), 500)
-    y_line = regressor.predict(x_line.reshape(-1, 1))
-
     # Plotting
     fig, ax = plt.subplots(figsize=(8, 6))
     cmap = ListedColormap(["blue", "red"])
@@ -289,15 +290,6 @@ def plot_vae_tsne_with_svm_boundary(
         label="SVM Boundary Points"
     )
 
-    # Plot regression line
-    ax.plot(
-        x_line,
-        y_line,
-        color="green",
-        linestyle="--",
-        label="SVM Boundary Line"
-    )
-
     ax.set_xlabel("t-SNE Dimension 1")
     ax.set_ylabel("t-SNE Dimension 2")
     ax.legend()
@@ -314,9 +306,103 @@ def plot_vae_tsne_with_svm_boundary(
     plt.show()
 
 
+def plot_vae_tsne_with_kmeans(
+    vae_model,
+    dataloader,
+    kmeans_dict,
+    save_dir: str = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/",
+    title_actual: str = "2D t-SNE of VAE Latent Space (Actual Labels)",
+    title_kmeans: str = "2D t-SNE of VAE Latent Space (KMeans Labels)",
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+):
+    """
+    Visualizes a VAE's latent space using t-SNE, creating two plots:
+    one with actual labels and another with KMeans cluster labels.
+
+    Args:
+        vae_model: The trained VAE model.
+        dataloader: A PyTorch DataLoader providing images and labels.
+        kmeans_dict: Trained KMeans object for clustering latent representations.
+        save_dir (str): Directory to save the generated plots.
+        title_actual (str): Title for the plot with actual labels.
+        title_kmeans (str): Title for the plot with KMeans labels.
+        device (str): Device to use for computations ("cuda" or "cpu").
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    vae_model.to(device)
+    vae_model.eval()
+
+    latent_vectors = []
+    actual_labels = []
+
+    # Extract latent vectors and labels
+    with torch.no_grad():
+        for images, labels in dataloader:
+            images = images.to(device)
+            labels = labels.to(device)
+
+            # Forward pass to get latent embeddings
+            z = vae_model(images)  # Assumes the forward method outputs latent variables z
+            latent_vectors.append(z.cpu().numpy())
+            actual_labels.append(labels.cpu().numpy())
+
+    latent_vectors = np.concatenate(latent_vectors, axis=0)
+    actual_labels = np.concatenate(actual_labels, axis=0)
+
+    # Apply t-SNE to reduce latent space to 2D
+    tsne = TSNE(n_components=2, perplexity=50, random_state=42)
+    tsne_features = tsne.fit_transform(latent_vectors)
+
+    # Get KMeans cluster labels
+    kmeans, inverted = kmeans_dict.values()
+    kmeans_labels = kmeans.predict(latent_vectors)
+    if inverted:
+        kmeans_labels = 1 - kmeans_labels
+
+    # Define function to create scatter plots
+    def create_scatter_plot(features, labels, title, save_path, label_names):
+        fig, ax = plt.subplots(figsize=(8, 6))
+        scatter = ax.scatter(
+            features[:, 0],
+            features[:, 1],
+            c=labels,
+            cmap=ListedColormap(["blue", "red"]),
+            s=20,
+            edgecolor="none"
+        )
+        ax.set_xlabel("t-SNE Dimension 1")
+        ax.set_ylabel("t-SNE Dimension 2")
+        ax.set_title(title)
+
+        # Add colorbar with label names
+        cbar = plt.colorbar(scatter, ax=ax)
+        cbar.set_ticks(np.arange(len(label_names)))
+        cbar.set_ticklabels(label_names)
+
+        plt.savefig(save_path, bbox_inches="tight", dpi=300)
+        plt.show()
+
+    # Create and save plots
+    create_scatter_plot(
+        tsne_features,
+        actual_labels,
+        title_actual,
+        save_dir + "vae_tsne_actual_labels.jpg",
+        label_names=[f"Class {i}" for i in np.unique(actual_labels)]
+    )
+
+    create_scatter_plot(
+        tsne_features,
+        kmeans_labels,
+        title_kmeans,
+        save_dir + "vae_tsne_kmeans_labels.jpg",
+        label_names=[f"Cluster {i}" for i in np.unique(kmeans_labels)]
+    )
 
 
-def plot_vae_outputs(model, data_loader, device="cuda", num_images=8):
+
+
+def plot_vae_outputs(model, data_loader, device="cuda", num_images=8, save_path=None):
     """
     Visualizes the input and output of a Variational Autoencoder (VAE).
     
@@ -325,6 +411,7 @@ def plot_vae_outputs(model, data_loader, device="cuda", num_images=8):
         data_loader (DataLoader): DataLoader with test or validation data.
         device (str): Device to use for computation ('cuda' or 'cpu').
         num_images (int): Number of images to visualize.
+        save_path (str): Name of saved plot.
     """
     model.to(device)
     model.eval()
@@ -357,9 +444,11 @@ def plot_vae_outputs(model, data_loader, device="cuda", num_images=8):
     
     plt.tight_layout()
     plt.show()
+    if save_path is not None:
+        plt.savefig(save_path)
 
 
-def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda"):
+def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda", save_path=None):
     """
     Visualizes the samples generated by the Variational Autoencoder (VAE).
     
@@ -367,6 +456,7 @@ def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda"):
         model (torch.nn.Module): The trained VAE model.
         num_samples (int): Number of samples to visualize.
         device (str): Device to use for computation ('cuda' or 'cpu').
+        save_path (str): Name of saved plot.
     """
     model.to(device)
     model.eval()
@@ -389,9 +479,11 @@ def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda"):
     
     plt.tight_layout()
     plt.show()
+    if save_path is not None:
+        plt.savefig(save_path)
 
 
-def plot_training_metrics(metrics_list):
+def plot_training_metrics(metrics_list, save_name):
     """
     Plots training metrics from a list of dictionaries.
     
@@ -404,7 +496,9 @@ def plot_training_metrics(metrics_list):
                 - 'validation_accuracy': List of validation accuracy values.
                 - 'training_time': List of training time values per epoch.
                 - 'gradient_norm': List of gradient norms per epoch.
+        save_name (str): suffix used for saving plot.
     """
+    save_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/" + save_name + ".png"
     if not metrics_list:
         print("No metrics provided for plotting.")
         return
@@ -462,4 +556,65 @@ def plot_training_metrics(metrics_list):
 
     # Adjust layout and show plots
     plt.tight_layout()
+    plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.show()
+
+
+def plot_vae_training_metrics(metrics, save_name):
+    """
+    Plots VAE training and validation metrics.
+
+    Args:
+        metrics (dict): Dictionary containing training and validation metrics.
+            Keys should include:
+                - 'training_loss': List of total training loss values.
+                - 'training_recon_loss': List of training reconstruction loss values.
+                - 'training_kld_loss': List of training KLD loss values.
+                - 'validation_loss': List of total validation loss values.
+                - 'validation_recon_loss': List of validation reconstruction loss values.
+                - 'validation_kld_loss': List of validation KLD loss values.
+        save_name (str): File name for saving the plot.
+    """
+    save_path = f"/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/{save_name}.png"
+
+    # Check if metrics are provided
+    if not metrics:
+        print("No metrics provided for plotting.")
+        return
+
+    # Create subplots for the different loss components
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+    # Define the keys and titles for each subplot
+    loss_components = [
+        ("training_loss", "validation_loss", "Total Loss"),
+        ("training_recon_loss", "validation_recon_loss", "Reconstruction Loss"),
+        ("training_kld_loss", "validation_kld_loss", "KLD Loss"),
+    ]
+
+    for ax, (train_key, val_key, title) in zip(axes, loss_components):
+        # Check if keys exist in metrics
+        if train_key not in metrics or val_key not in metrics:
+            print(f"Metrics do not contain keys: {train_key}, {val_key}. Skipping...")
+            continue
+
+        # Get the data for training and validation
+        train_data = metrics[train_key]
+        val_data = metrics[val_key]
+        epochs = range(1, len(train_data) + 1)
+
+        # Plot the metrics
+        ax.plot(epochs, train_data, label="Training", color="blue")
+        ax.plot(epochs, val_data, label="Validation", color="orange", linestyle="--")
+
+        # Set titles and labels
+        ax.set_title(title)
+        ax.set_xlabel("Epochs")
+        ax.set_ylabel("Loss")
+        ax.legend()
+        ax.grid(True)
+
+    # Adjust layout and save the plot
+    plt.tight_layout()
+    plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.show()

@@ -17,7 +17,7 @@ class VAE(nn.Module):
         num_layers_encoder: int = 2,
         num_layers_decoder: int = 3,
         beta: float = 0.05,
-        classification_mode: bool = False
+        classification_mode: str = None,
     ):
         super(VAE, self).__init__()
         self.encoder = MLPEncoder(input_dim, hidden_dim, latent_dim, num_layers_encoder)
@@ -44,8 +44,11 @@ class VAE(nn.Module):
         mu, log_var = self.encoder(x_flat)
         z = self.reparameterize(mu, log_var)
 
-        if self.classification_mode:
+        if self.classification_mode == "SVM":
             return self.svm_layer(z)  # Output class logits
+        
+        if self.classification_mode == "KMeans":
+            return z
 
         x_hat = self.decoder(z).view(x.size())  # Reshape back to input dimensions
         return x_hat, x, mu, log_var

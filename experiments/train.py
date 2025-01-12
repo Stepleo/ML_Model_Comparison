@@ -2,8 +2,11 @@ import os
 import time
 import pickle
 import torch
+import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from sklearn.metrics import accuracy_score
+from sklearn.cluster import KMeans
 
 def train_binary_classifier(
         model: torch.nn.Module, 
@@ -120,6 +123,113 @@ def train_binary_classifier(
             pickle.dump(metrics, f)
         
         print(f"Training metrics saved to {file_path}")
+
+def train_vae_kmeans(
+        vae: torch.nn.Module, 
+        train_loader: DataLoader, 
+        test_loader: DataLoader,  
+        device: str = "cuda",
+        save_results: bool = False,
+        description: str = None,
+    ):
+    """
+    Train and evaluate a VAE with KMeans clustering on its latent space.
+
+    Args:
+        vae (torch.nn.Module): The VAE model in "KMeans" mode.
+        train_loader (DataLoader): Dataloader for the training data.
+        test_loader (DataLoader): Dataloader for the validation data.
+        device (str): The device to use for computations (default: "cuda").
+        save_results (bool): Whether to save the training metrics as a pickle file (default: False).
+        description (str): Additional description to add to the file name when saving metrics.
+
+    Returns:
+        tuple: A dictionary of metrics and the trained KMeans object.
+    """
+    # Hardcoded directory for saving results
+    results_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/training"
+    os.makedirs(results_dir, exist_ok=True)
+    model_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/models"
+    os.makedirs(results_dir, exist_ok=True)
+
+    # Make sure the VAE is in KMeans mode
+    vae.classification_mode = "KMeans"
+
+    # Move model to device
+    vae.to(device)
+    vae.eval()
+
+    # Metrics dictionary to store training loss and accuracies
+    metrics = {
+        "training_accuracy": [],
+        "validation_accuracy": [],
+        "training_time": [],
+    }
+
+    # Compute latent representations for the training set
+    start_time = time.time()
+    train_latent_representations = []
+    train_labels = []
+    inverted = False
+
+    with torch.no_grad():
+        for images, labels in train_loader:
+            images = images.to(device)
+            z = vae(images)  # Latent representations
+            z_numpy = z.cpu().numpy()
+            labels_numpy = labels.cpu().numpy()
+            train_latent_representations.append(z_numpy)
+            train_labels.append(labels_numpy)
+    train_latent_representations = np.concatenate(train_latent_representations, axis=0)
+    train_labels = np.concatenate(train_labels, axis=0)
+
+    # Fit KMeans on latent representations
+    num_clusters = len(np.unique(train_labels))  # Assuming class labels correspond to the number of clusters
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    kmeans.fit(train_latent_representations)
+    train_time = time.time() - start_time
+    metrics["training_time"].append(train_time)
+
+    # Predict cluster labels for training set and compute accuracy
+    train_predicted_labels = kmeans.predict(train_latent_representations)
+    train_accuracy = accuracy_score(train_labels, train_predicted_labels)
+    if train_accuracy < 1 - train_accuracy:
+        inverted = True
+        train_accuracy = 1 - train_accuracy
+    metrics["training_accuracy"].append(train_accuracy)
+
+    # Evaluate on the validation set
+    validation_latent_representations = []
+    validation_labels = []
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images = images.to(device)
+            z = vae(images)  # Latent representations
+            validation_latent_representations.append(z.cpu().numpy())
+            validation_labels.append(labels.cpu().numpy())
+    validation_latent_representations = np.concatenate(validation_latent_representations, axis=0)
+    validation_labels = np.concatenate(validation_labels, axis=0)
+
+    # Predict cluster labels for validation set and compute accuracy
+    validation_predicted_labels = kmeans.predict(validation_latent_representations)
+    if inverted:
+        validation_predicted_labels = 1 - validation_predicted_labels
+    validation_accuracy = accuracy_score(validation_labels, validation_predicted_labels)
+    metrics["validation_accuracy"].append(validation_accuracy)
+
+    # Save metrics dictionary as a pickle file if save_results is True
+    if save_results:
+        file_name = f"{vae._get_name()}_{description}_kmeans.pkl"
+        file_path = os.path.join(results_dir, file_name)
+        with open(file_path, "wb") as f:
+            pickle.dump(metrics, f)
+        print(f"Training metrics saved to {file_path}")
+
+        file_name = f"{vae._get_name()}_{description}_kmeans.pkl"
+        file_path = os.path.join(model_dir, file_name)
+        with open(file_path, "wb") as f:
+            pickle.dump({"kmeans": kmeans, "inverted": inverted}, f)
+        print(f"Kmeans saved to {file_path}")
 
 
 def train_vae(
@@ -247,7 +357,7 @@ def train_vae(
 
     # Save metrics dictionary as a pickle file if save_results is True
     if save_results:
-        file_name = f"{model._get_name()}_{epochs}_epochs_{learning_rate}_lr_{description}.pkl"
+        file_name = f"{model._get_name()}_{epochs}_epochs_{learning_rate}_lr_{description}_generation.pkl"
         file_path = os.path.join(results_dir, file_name)
         with open(file_path, "wb") as f:
             pickle.dump(metrics, f)
