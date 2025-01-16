@@ -13,8 +13,6 @@ __pycache__/
 venv/
 .env/
 
-# Ignore all notebooks
-*.ipynb
 
 # Ignore the saved models
 results/*
