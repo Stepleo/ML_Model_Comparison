@@ -12,7 +12,7 @@ def train_binary_classifier(
         model: torch.nn.Module, 
         train_loader: DataLoader, 
         test_loader: DataLoader, 
-        criterion=torch.nn.CrossEntropyLoss(),
+        criterion = torch.nn.CrossEntropyLoss(),
         epochs: int = 10, 
         learning_rate: float = 1e-3, 
         device: str = "cuda",
@@ -216,6 +216,7 @@ def train_vae_kmeans(
         validation_predicted_labels = 1 - validation_predicted_labels
     validation_accuracy = accuracy_score(validation_labels, validation_predicted_labels)
     metrics["validation_accuracy"].append(validation_accuracy)
+    print(validation_accuracy)
 
     # Save metrics dictionary as a pickle file if save_results is True
     if save_results:
@@ -225,22 +226,23 @@ def train_vae_kmeans(
             pickle.dump(metrics, f)
         print(f"Training metrics saved to {file_path}")
 
-        file_name = f"{vae._get_name()}_{description}_kmeans.pkl"
-        file_path = os.path.join(model_dir, file_name)
-        with open(file_path, "wb") as f:
-            pickle.dump({"kmeans": kmeans, "inverted": inverted}, f)
-        print(f"Kmeans saved to {file_path}")
+    file_name = f"{vae._get_name()}_{description}_kmeans.pkl"
+    file_path = os.path.join(model_dir, file_name)
+    with open(file_path, "wb") as f:
+        pickle.dump({"kmeans": kmeans, "inverted": inverted}, f)
+    print(f"Kmeans saved to {file_path}")
 
 
 def train_vae(
     model: torch.nn.Module, 
     train_loader: DataLoader, 
-    test_loader: DataLoader, 
+    test_loader: DataLoader = None, 
     epochs: int = 10, 
     learning_rate: float = 1e-3, 
     device: str = "cuda", 
     save_results: bool = False,
     description: str = None,
+    max_grad_norm: float = 1.0,  # Gradient clipping threshold
 ):
     """
     Trains a Variational Autoencoder (VAE) on a given dataset and logs metrics.
@@ -254,6 +256,7 @@ def train_vae(
         device (str): Device to use for training ('cuda' or 'cpu').
         save_results (bool): Whether to save training metrics as a pickle file.
         description (str): Additional description that appears in the pickle file name.
+        max_grad_norm (float): Maximum gradient norm for clipping.
     """
     # Hardcoded directory for saving results
     results_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/training"
@@ -300,7 +303,10 @@ def train_vae(
             optimizer.zero_grad()
             loss.backward()
 
-            # Compute gradient norm
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+
+            # Compute gradient norm after clipping
             grad_norm += sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)
 
             optimizer.step()
@@ -363,4 +369,5 @@ def train_vae(
             pickle.dump(metrics, f)
 
         print(f"Training metrics saved to {file_path}")
+
             

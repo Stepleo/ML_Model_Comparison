@@ -94,7 +94,7 @@ class BaseVisualizationModel(nn.Module):
             sorted_indices = relevance_scores.argsort(descending=True)
             feature_maps = feature_maps[sorted_indices]
 
-        plot_feature_maps(feature_maps, num_maps)
+        plot_feature_maps(feature_maps, num_maps, save_name)
 
 
 
@@ -140,10 +140,10 @@ def plot_filters(filters, num_filters=10, save_name=None):
     for i in range(min(num_filters, filters.shape[0])):
         axes[i].imshow(filters[i][0], cmap="gray") # Only first kernel of each filter
         axes[i].axis("off")
-    plt.show()
     if save_name is not None:
         image_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/"
-        plt.savefig(image_path + save_name + ".png")
+        plt.savefig(image_path + save_name + ".png", bbox_inches="tight", dpi=300)
+    plt.show()
 
 
 def plot_feature_maps(feature_maps, num_features=10, save_name=None):
@@ -164,10 +164,10 @@ def plot_feature_maps(feature_maps, num_features=10, save_name=None):
     for i in range(min(num_features, feature_maps.shape[0])):
         axes[i].imshow(feature_maps[i], cmap="gray")
         axes[i].axis("off")
-    plt.show()
     if save_name is not None:
         image_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/"
-        plt.savefig(image_path + save_name + ".png")
+        plt.savefig(image_path + save_name + ".png", bbox_inches="tight", dpi=300)
+    plt.show()
 
 
 def generate_hyperplane_points(svm_weights, svm_bias, latent_dim, num_points=1000):
@@ -443,9 +443,9 @@ def plot_vae_outputs(model, data_loader, device="cuda", num_images=8, save_path=
         axes[1, i].set_title("Reconstructed")
     
     plt.tight_layout()
-    plt.show()
     if save_path is not None:
-        plt.savefig(save_path)
+        plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.show()
 
 
 def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda", save_path=None):
@@ -478,9 +478,10 @@ def plot_vae_samples(model, num_samples=8, image_size=64, device="cuda", save_pa
         axes[i].set_title(f"Sample {i+1}")
     
     plt.tight_layout()
-    plt.show()
     if save_path is not None:
-        plt.savefig(save_path)
+        plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.show()
+    
 
 
 def plot_training_metrics(metrics_list, save_name):
