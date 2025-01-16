@@ -19,3 +19,7 @@ results/*
 
 # Ignore MNIST data
 data/MNIST/*
+
+
+# Module 
+ClassComp.egg-info

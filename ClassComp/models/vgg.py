@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .layers import conv_block
-from CompClass.utils.visualization import BaseVisualizationModel
+from ClassComp.utils.visualization import BaseVisualizationModel
 
 class VGG(BaseVisualizationModel):
     """

@@ -7,8 +7,8 @@ import pickle
 from torchvision import transforms
 from sklearn.metrics import accuracy_score
 
-from ClassComp.data_utils.synthetic_data import generate_synthetic_dataset
-from ClassComp.data_utils.loaders import get_dataloader
+from ClassComp.data_utils_utils.synthetic_data import generate_synthetic_dataset
+from ClassComp.data_utils_utils.loaders import get_dataloader
 from ClassComp.models.vgg import VGG
 from ClassComp.models.resnet import ResNet
 from ClassComp.models.unet import UNet
