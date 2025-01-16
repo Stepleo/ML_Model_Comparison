@@ -139,7 +139,7 @@ def train_models(train_loader, test_loader, image_size, epochs):
     model_paths = {}
 
     # Temporary directory to store models
-    temp_dir = tempfile.mkdtemp(dir=os.path.expanduser("~/Programmation/Python/AML_project/ML_Model_Comparison/results/temp"))
+    temp_dir = tempfile.mkdtemp(dir=os.path.expanduser("results/temp"))
     # Train VGG
     print("Training VGG")
     vgg = VGG(input_img_size=image_size, input_img_c=1)

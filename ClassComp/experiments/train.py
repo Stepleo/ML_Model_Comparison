@@ -150,7 +150,7 @@ def train_vae_kmeans(
     results_dir = "results/training"
     os.makedirs(results_dir, exist_ok=True)
     model_dir = "results/models"
-    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
 
     # Make sure the VAE is in KMeans mode
     vae.classification_mode = "KMeans"
