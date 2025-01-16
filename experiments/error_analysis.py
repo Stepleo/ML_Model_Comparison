@@ -3,6 +3,7 @@ import gc
 import tempfile
 import os
 import numpy as np
+import pickle
 from torchvision import transforms
 from data.synthetic_data import generate_synthetic_dataset
 from data.loaders import get_dataloader
@@ -10,8 +11,8 @@ from models.vgg import VGG
 from models.resnet import ResNet
 from models.unet import UNet
 from models.vae import VAE, SVMLoss
-from experiments.train import train_binary_classifier, train_vae
-from scipy.stats import norm
+from experiments.train import train_binary_classifier, train_vae, train_vae_kmeans
+from sklearn.metrics import accuracy_score
 
 
 def error_analysis(
@@ -22,6 +23,7 @@ def error_analysis(
     image_size: int = 224,
     dataset_size: int = 500,
     batch_size: int = 4,
+    seed=1
 ):
     """
     Perform Estimation Error vs Approximation Error analysis for different models.
@@ -43,10 +45,10 @@ def error_analysis(
     sigma_0 = sigma_1 = sigma
 
     train_subset = generate_synthetic_dataset(
-        size=dataset_size, mu_0=mu_0, sigma_0=sigma_0, mu_1=mu_1, sigma_1=sigma_1, image_size=image_size,
+        size=dataset_size, mu_0=mu_0, sigma_0=sigma_0, mu_1=mu_1, sigma_1=sigma_1, image_size=image_size, seed=seed
     )
     test_subset = generate_synthetic_dataset(
-        size=10 * dataset_size, mu_0=mu_0, sigma_0=sigma_0, mu_1=mu_1, sigma_1=sigma_1, image_size=image_size,
+        size=100*dataset_size, mu_0=mu_0, sigma_0=sigma_0, mu_1=mu_1, sigma_1=sigma_1, image_size=image_size, seed=seed+1
     )
 
     # Load datasets
@@ -63,7 +65,7 @@ def error_analysis(
     model_paths_test = train_models(test_loader, test_loader, image_size, epochs)
 
     # Compute Bayes risk
-    r_star = get_bayes_risk(mu_0, sigma_0, mu_1, sigma_1, image_size)
+    r_star = get_bayes_risk(mu_0, sigma_0, mu_1, sigma_1, test_loader)
 
     # Reload models and calculate errors
     errors = {}
@@ -85,25 +87,30 @@ def error_analysis(
 
     # UNet Errors
     resnet_train = load_model(ResNet, model_paths_train["ResNet"], image_size, device=device)
-    unet_train = load_model(UNet, model_paths_train["UNet"], device=device, dependency_model=resnet_train)
+    unet_train = load_model(UNet, model_paths_train["UNet pretrained"], device=device, dependency_model=resnet_train)
     del_model(resnet_train)
     resnet_test = load_model(ResNet, model_paths_test["ResNet"], image_size, device=device)
-    unet_test = load_model(UNet, model_paths_test["UNet"], device=device, dependency_model=resnet_test)
+    unet_test = load_model(UNet, model_paths_test["UNet pretrained"], device=device, dependency_model=resnet_test)
     del_model(resnet_test)
+    errors["UNet pretrained"] = get_errors(unet_train, unet_test, test_loader, r_star, device)
+    del_model(unet_train)
+    del_model(unet_test)
+    unet_train = load_model(UNet, model_paths_train["UNet"], device=device)
+    unet_test = load_model(UNet, model_paths_test["UNet"], device=device)
     errors["UNet"] = get_errors(unet_train, unet_test, test_loader, r_star, device)
     del_model(unet_train)
     del_model(unet_test)
 
+
     # VAE Errors
-    resnet_train = load_model(ResNet, model_paths_train["ResNet"], image_size, device=device)
-    vae_train = load_model(VAE, model_paths_train["VAE"], device=device, dependency_model=resnet_train)
-    del_model(resnet_train)
-    resnet_test = load_model(ResNet, model_paths_test["ResNet"], image_size, device=device)
-    vae_test = load_model(VAE, model_paths_test["VAE"], device=device, dependency_model=resnet_test)
-    del_model(resnet_test)
-    vae_train.classification_mode = True
-    vae_test.classification_mode = True
-    errors["VAE"] = get_errors(vae_train, vae_test, test_loader, r_star, device)
+    vae_train, kmeans_train = load_model(VAE, model_paths_train["VAE"], device=device, dependency_model=train_loader)
+    vae_test, kmeans_test = load_model(VAE, model_paths_test["VAE"], device=device, dependency_model=test_loader)
+    vae_train.classification_mode = "SVM"
+    vae_test.classification_mode = "SVM"
+    errors["VAE SVM"] = get_errors(vae_train, vae_test, test_loader, r_star, device)
+    vae_train.classification_mode = "KMeans"
+    vae_test.classification_mode = "KMeans"
+    errors["VAE KMeans"] = get_errors(vae_train, vae_test, test_loader, r_star, device, [kmeans_train, kmeans_test])
     del_model(vae_train)
     del_model(vae_test)
 
@@ -153,7 +160,14 @@ def train_models(train_loader, test_loader, image_size, epochs):
     print("Training UNet")
     resnet = ResNet(input_img_size=image_size, input_img_c=1)  # Load ResNet for UNet initialization
     resnet.load_state_dict(torch.load(resnet_path))
-    unet = UNet(resnet.to("cuda"))
+    unet = UNet(input_img_size=image_size, resnet=resnet.to("cuda"))
+    train_binary_classifier(unet, train_loader, test_loader, epochs=epochs)
+    unet_path = os.path.join(temp_dir, f"unet_pretrained.pth")
+    torch.save(unet.state_dict(), unet_path)
+    del_model(unet)
+    del_model(resnet)
+    model_paths["UNet pretrained"] = unet_path
+    unet = UNet(input_img_size=image_size)
     train_binary_classifier(unet, train_loader, test_loader, epochs=epochs)
     unet_path = os.path.join(temp_dir, f"unet.pth")
     torch.save(unet.state_dict(), unet_path)
@@ -162,11 +176,10 @@ def train_models(train_loader, test_loader, image_size, epochs):
 
     # Train VAE
     print("Training VAE")
-    resnet.load_state_dict(torch.load(resnet_path))  # Load ResNet for VAE initialization
-    vae = VAE(resnet.to("cuda"))
+    vae = VAE(image_size**2, 32*32, 8, beta=0.05)
     train_vae(vae, train_loader, test_loader, epochs=epochs)
-    vae.classification_mode = True
 
+    vae.classification_mode = "SVM"
     # Train VAE classification head
     criterion = SVMLoss()
     for param in vae.parameters():
@@ -176,6 +189,7 @@ def train_models(train_loader, test_loader, image_size, epochs):
             param.requires_grad = True
 
     train_binary_classifier(vae, train_loader, test_loader, criterion=criterion, epochs=epochs)
+    train_vae_kmeans(vae, train_loader, test_loader, "cuda", False, f"synthetic_{hex(id(train_loader))}")
     vae_path = os.path.join(temp_dir, f"vae.pth")
     torch.save(vae.state_dict(), vae_path)
     del_model(vae)
@@ -185,7 +199,7 @@ def train_models(train_loader, test_loader, image_size, epochs):
 
 
 
-def load_model(model_class, model_path, image_size=224, device="cpu", dependency_model=None):
+def load_model(model_class, model_path, image_size=32, device="cuda", dependency_model=None):
     """
     Load a model from a saved file.
 
@@ -198,13 +212,21 @@ def load_model(model_class, model_path, image_size=224, device="cpu", dependency
     Returns:
         torch.nn.Module: The loaded model.
     """
-    if dependency_model is not None:
-        model = model_class(dependency_model).to(device)
-    else:
+    if dependency_model is not None and model_class.__name__ == "UNet":
+        model = model_class(image_size, dependency_model).to(device)
+    elif model_class.__name__ == "VAE":
+        model = model_class(image_size**2, 32*32, 8, beta=0.05).to(device)
+        with open(f"/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/models/VAE_synthetic_{hex(id(dependency_model))}_kmeans.pkl", "rb") as f:
+            kmeans = pickle.load(f)
+            f.close()
+    elif model_class.__name__ == "VGG":
         model = model_class(input_img_size=image_size, input_img_c=1).to(device)
-
+    else:
+        model = model_class(input_img_size=image_size).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
+    if model_class.__name__ == "VAE":
+        return model, kmeans
     return model
 
 
@@ -245,7 +267,7 @@ def get_bayes_risk(mu_0, sigma_0, mu_1, sigma_1, dataset):
     return bayes_risk
 
 
-def get_errors(model, best_model, test_loader, r_star, device):
+def get_errors(model, best_model, test_loader, r_star, device, kmeans_dict=None):
     """
     Calculate estimation and approximation errors.
 
@@ -258,14 +280,18 @@ def get_errors(model, best_model, test_loader, r_star, device):
     Returns:
         list: [Estimation Error, Approximation Error]
     """
-    empirical_r = get_risk(model, test_loader, device)
-    inf_r = get_risk(best_model, test_loader, device)
+    if kmeans_dict is not None:
+        empirical_r = get_risk(model, test_loader, device, kmeans_dict[0])
+        inf_r = get_risk(best_model, test_loader, device, kmeans_dict[1])
+    else:
+        empirical_r = get_risk(model, test_loader, device)
+        inf_r = get_risk(best_model, test_loader, device)
     estimation_error = empirical_r - inf_r
     approximation_error = inf_r - r_star
     return [estimation_error, approximation_error]
 
 
-def get_risk(model, test_loader, device):
+def get_risk(model, test_loader, device, kmeans_dict=None):
     """
     Calculate risk (misclassification error) for a model on a test set.
 
@@ -278,16 +304,28 @@ def get_risk(model, test_loader, device):
     """
     model.eval()
     correct, total = 0, 0
+    latent_representation, all_labels = [], []
     with torch.no_grad():
         for images, labels in test_loader:
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
-            if model._get_name() == "VAE":
-                _, predicted = torch.min(outputs, 1)
+            if kmeans_dict is not None and model.classification_mode == "KMeans":
+                z_numpy = outputs.cpu().numpy()
+                labels_numpy = labels.cpu().numpy()
+                latent_representation.append(z_numpy)
+                all_labels.append(labels_numpy)
             else:
                 _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+    if kmeans_dict is not None and model.classification_mode == "KMeans":
+        latent_representation = np.concatenate(latent_representation, axis=0)
+        all_labels = np.concatenate(all_labels, axis=0)
+        predicted_labels = kmeans_dict['kmeans'].predict(latent_representation)
+        if kmeans_dict['inverted']:
+            predicted_labels = 1 - predicted_labels
+        accuracy = accuracy_score(all_labels, predicted_labels)
+        return 1 - accuracy
     return 1 - (correct / total)
 
 def del_model(model):
