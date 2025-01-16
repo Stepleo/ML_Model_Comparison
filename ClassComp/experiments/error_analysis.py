@@ -7,8 +7,8 @@ import pickle
 from torchvision import transforms
 from sklearn.metrics import accuracy_score
 
-from ClassComp.data_utils_utils.synthetic_data import generate_synthetic_dataset
-from ClassComp.data_utils_utils.loaders import get_dataloader
+from ClassComp.data_utils.synthetic_data import generate_synthetic_dataset
+from ClassComp.data_utils.loaders import get_dataloader
 from ClassComp.models.vgg import VGG
 from ClassComp.models.resnet import ResNet
 from ClassComp.models.unet import UNet
@@ -218,7 +218,7 @@ def load_model(model_class, model_path, image_size=32, device="cuda", dependency
         model = model_class(image_size, dependency_model).to(device)
     elif model_class.__name__ == "VAE":
         model = model_class(image_size**2, 32*32, 8, beta=0.05).to(device)
-        with open(f"/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/models/VAE_synthetic_{hex(id(dependency_model))}_kmeans.pkl", "rb") as f:
+        with open(f"results/models/VAE_synthetic_{hex(id(dependency_model))}_kmeans.pkl", "rb") as f:
             kmeans = pickle.load(f)
             f.close()
     elif model_class.__name__ == "VGG":

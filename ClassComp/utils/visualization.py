@@ -141,7 +141,7 @@ def plot_filters(filters, num_filters=10, save_name=None):
         axes[i].imshow(filters[i][0], cmap="gray") # Only first kernel of each filter
         axes[i].axis("off")
     if save_name is not None:
-        image_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/"
+        image_path = "results/image/"
         plt.savefig(image_path + save_name + ".png", bbox_inches="tight", dpi=300)
     plt.show()
 
@@ -165,7 +165,7 @@ def plot_feature_maps(feature_maps, num_features=10, save_name=None):
         axes[i].imshow(feature_maps[i], cmap="gray")
         axes[i].axis("off")
     if save_name is not None:
-        image_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/"
+        image_path = "results/image/"
         plt.savefig(image_path + save_name + ".png", bbox_inches="tight", dpi=300)
     plt.show()
 
@@ -216,7 +216,7 @@ def generate_hyperplane_points(svm_weights, svm_bias, latent_dim, num_points=100
 def plot_vae_tsne_with_svm_boundary(
     vae_model,
     dataloader,
-    save_path: str = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/vae_tsne_with_svm.jpg",
+    save_path: str = "results/image/vae_tsne_with_svm.jpg",
     title: str = "2D t-SNE of VAE Latent Space with SVM Boundary",
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ):
@@ -310,7 +310,7 @@ def plot_vae_tsne_with_kmeans(
     vae_model,
     dataloader,
     kmeans_dict,
-    save_dir: str = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/",
+    save_dir: str = "results/image/",
     title_actual: str = "2D t-SNE of VAE Latent Space (Actual Labels)",
     title_kmeans: str = "2D t-SNE of VAE Latent Space (KMeans Labels)",
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
@@ -499,7 +499,7 @@ def plot_training_metrics(metrics_list, save_name):
                 - 'gradient_norm': List of gradient norms per epoch.
         save_name (str): suffix used for saving plot.
     """
-    save_path = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/" + save_name + ".png"
+    save_path = "results/image/" + save_name + ".png"
     if not metrics_list:
         print("No metrics provided for plotting.")
         return
@@ -576,7 +576,7 @@ def plot_vae_training_metrics(metrics, save_name):
                 - 'validation_kld_loss': List of validation KLD loss values.
         save_name (str): File name for saving the plot.
     """
-    save_path = f"/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/image/{save_name}.png"
+    save_path = f"results/image/{save_name}.png"
 
     # Check if metrics are provided
     if not metrics:

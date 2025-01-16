@@ -34,7 +34,7 @@ def train_binary_classifier(
         description (str): Additional description that appears in the pickle file name.
     """
     # Hardcoded directory for saving results
-    results_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/training"
+    results_dir = "results/training"
     os.makedirs(results_dir, exist_ok=True)
 
     # Move model to the specified device
@@ -147,9 +147,9 @@ def train_vae_kmeans(
         tuple: A dictionary of metrics and the trained KMeans object.
     """
     # Hardcoded directory for saving results
-    results_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/training"
+    results_dir = "results/training"
     os.makedirs(results_dir, exist_ok=True)
-    model_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/models"
+    model_dir = "results/models"
     os.makedirs(results_dir, exist_ok=True)
 
     # Make sure the VAE is in KMeans mode
@@ -259,7 +259,7 @@ def train_vae(
         max_grad_norm (float): Maximum gradient norm for clipping.
     """
     # Hardcoded directory for saving results
-    results_dir = "/home/leo/Programmation/Python/AML_project/ML_Model_Comparison/results/training"
+    results_dir = "results/training"
     os.makedirs(results_dir, exist_ok=True)
 
     model.to(device)
