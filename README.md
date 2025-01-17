@@ -19,7 +19,9 @@ Use the notebooks in order
 
 - I- Train_Gaussian_noise: Runs reconstruction experiments on synthetic Gaussian Dataset and extracts results and metrcis  
 - II - Train Mnist : Runs reconstruction experiment on Mnist dataset 
-- III - PLot_graphs : plots results from Mnis-basedt models and metrics
+- III - Plot_graphs : plots results from Mnist-based models and metrics
+
+In case you wish to check the plotting without fully training, we have also prepared a bunch of weights and results you can check out in ``III - plot\_graphs``. You can download it from [here](link)
 ---
 
 ## Introduction and Motivation
