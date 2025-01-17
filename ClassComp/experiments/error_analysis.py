@@ -137,7 +137,7 @@ def train_models(train_loader, test_loader, image_size, epochs):
         dict: Paths to the saved model files.
     """
     model_paths = {}
-
+    os.makedirs("results/temp", exist_ok=True)
     # Temporary directory to store models
     temp_dir = tempfile.mkdtemp(dir=os.path.expanduser("results/temp"))
     # Train VGG

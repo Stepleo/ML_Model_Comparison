@@ -1,6 +1,26 @@
 # Comparative Analysis of Classification Performance and Learning Dynamics in VGG, ResNet, U-Net, and a VAE-based Latent Space Clustering Model
 
 ---
+## Usage
+
+Start by setting up the environment by runnning:
+
+``` bash
+pip install -r requirements.txt
+```
+
+setup the module ClassComp by using 
+``` bash
+pip install -e .
+```
+
+
+Use the notebooks in order
+
+- I- Train_Gaussian_noise: Runs reconstruction experiments on synthetic Gaussian Dataset and extracts results and metrcis  
+- II - Train Mnist : Runs reconstruction experiment on Mnist dataset 
+- III - PLot_graphs : plots results from Mnis-basedt models and metrics
+---
 
 ## Introduction and Motivation
 Deep learning models, especially convolutional neural networks (CNNs), have achieved remarkable results in classification tasks. Standard architectures like VGG, ResNet, and U-Net are foundational in tasks such as image classification and segmentation. On the other hand, unsupervised approaches, such as Variational Autoencoders (VAEs) combined with clustering on latent space representations, offer exciting possibilities, particularly in contexts where labeled data is scarce or expensive.
